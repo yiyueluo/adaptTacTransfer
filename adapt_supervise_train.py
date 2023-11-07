@@ -1,3 +1,10 @@
+'''
+This code trains/evaluates the forward model (with adaptation module),
+which predicts tactile signal from input haptic signal.
+This needs to be use with online_supervise_dataloader.py and online_supervise_model.py
+'''
+
+
 import torch.nn as nn
 import time
 from torch.autograd import Variable
@@ -17,16 +24,16 @@ from progressbar import ProgressBar
 from torch.utils.tensorboard import SummaryWriter
 
 parser = argparse.ArgumentParser(description='Process some integers.')
-parser.add_argument('--exp_dir', type=str, default='../recordings/exp5/', help='Experiment path')
-parser.add_argument('--exp_name', type=str, default='_01', help='Experiment name')
+parser.add_argument('--exp_dir', type=str, default='./exp/', help='Experiment path')
+parser.add_argument('--exp_name', type=str, default='', help='Experiment name')
 parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch size,128')
 parser.add_argument('--weightdecay', type=float, default=1e-4, help='weight decay')
 parser.add_argument('--window', type=int, default=200, help='window around the time step')
 parser.add_argument('--window_z', type=int, default=800, help='window around the time step')
 parser.add_argument('--epoch', type=int, default=500, help='The time steps you want to subsample the dataset to,500')
-parser.add_argument('--ckpt', type=str, default='val_online_best', help='loaded ckpt file')
-parser.add_argument('--eval', type=bool, default=True, help='Set true if eval time')
+parser.add_argument('--ckpt', type=str, default='val_best_adapt', help='loaded ckpt file')
+parser.add_argument('--eval', type=bool, default=False, help='Set true if eval time')
 parser.add_argument('--train_continue', type=bool, default=False, help='Set true if eval time')
 args = parser.parse_args()
 
@@ -37,19 +44,19 @@ if not os.path.exists(args.exp_dir + 'predictions'):
     os.makedirs(args.exp_dir + 'predictions')
 
 if not args.eval:
-    train_path = args.exp_dir + 'train_online' + args.exp_name + '.p'
+    train_path = args.exp_dir + 'data/train' + args.exp_name + '.p'
     mask = []
     train_dataset = sample_data(train_path, args.window, args.window_z)
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8)
     print(len(train_dataset))
 
-    val_path = args.exp_dir + 'val_online' + args.exp_name + '.p'
+    val_path = args.exp_dir + 'data/val' + args.exp_name + '.p'
     val_dataset = sample_data(val_path, args.window, args.window_z)
     val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
     print(len(val_dataset))
 
 if args.eval:
-    test_path = args.exp_dir + 'test_online' + args.exp_name + '.p'
+    test_path = args.exp_dir + 'data/test' + args.exp_name + '.p'
     test_dataset = sample_data(test_path, args.window, args.window_z)
     test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
     print(len(test_dataset))
@@ -102,7 +109,6 @@ if __name__ == '__main__':
             tactile = torch.tensor(sample_batched[4], dtype=torch.float, device=device)
 
             with torch.set_grad_enabled(False):
-                # tactile_pred, _ = model(act_z, tactile_z, tactile_goal_z, act)
                 tactile_pred, _ = model(act_z, tactile_z, act)
 
             act_list = np.concatenate((act_list, act.cpu().data.numpy()), axis=0)
@@ -110,11 +116,7 @@ if __name__ == '__main__':
             tactile_pred_list = np.concatenate((tactile_pred_list, tactile_pred.cpu().data.numpy()), axis=0)
 
             loss = criterion(tactile_pred, tactile) * 100
-
             eval_loss.append(loss.data.item())
-            # pickle.dump([act_list, tactile_list, tactile_pred_list],
-            #             open(args.exp_dir + 'predictions/eval_online' + args.exp_name + '/' + str(i_batch) + '.p',
-            #                  "wb"))
 
         pickle.dump([act_list, tactile_list, tactile_pred_list],
                     open(args.exp_dir + 'predictions/eval_online' + args.exp_name +'.p', "wb"))
@@ -142,7 +144,6 @@ if __name__ == '__main__':
                 # print(act.size(), tactile.size())
 
                 with torch.set_grad_enabled(True):
-                    # tactile_pred, _ = model(act_z, tactile_z, tactile_goal_z, act)
                     tactile_pred, _ = model(act_z, tactile_z, act)
 
                 # print(criterion(tactile_z, tactile_goal_z) * 100)
@@ -158,8 +159,6 @@ if __name__ == '__main__':
                 writer.add_scalar('Loss/train_perBatch', loss, epoch * len(train_dataloader) + i_batch)
                 writer.add_scalar('Loss/train_meanSoFar', np.mean(train_loss),
                                   epoch * len(train_dataloader) + i_batch)
-                # pickle.dump([act.cpu().data.numpy(), tactile.cpu().data.numpy(), tactile_pred.cpu().data.numpy()],
-                #             open(args.exp_dir + 'predictions/train_' + str(args.window) + '_' + str(epoch) + '.p', "wb"))
 
                 if i_batch % 20 == 0 and i_batch != 0:
                     val_loss_t = []
@@ -167,13 +166,6 @@ if __name__ == '__main__':
 
                     print("[%d/%d], Loss: %.6f" % (
                         i_batch, len(train_dataloader),loss.item()))
-
-                    # torch.save({
-                    #     'epoch': epoch,
-                    #     'model_state_dict': model.state_dict(),
-                    #     'optimizer_state_dict': optimizer.state_dict(),
-                    #     'loss': loss, },
-                    #     args.exp_dir + 'ckpts/train_online_' + str(args.window) + '_' + str(epoch) + args.exp_name + '.path.tar')
 
                     print("Now running on val set")
                     model.train(False)
@@ -207,13 +199,9 @@ if __name__ == '__main__':
                         print("new best train loss:", np.mean(train_loss))
                         best_train_loss = np.mean(train_loss)
 
-                        # pickle.dump([act.cpu().data.numpy(), tactile.cpu().data.numpy(), tactile_pred.cpu().data.numpy()],
-                        #             open(args.exp_dir + 'predictions/train_online_' + str(args.window) + '_' + str(epoch) + args.exp_name + '.p', "wb"))
                         pickle.dump([act.cpu().data.numpy(), tactile.cpu().data.numpy(), tactile_pred.cpu().data.numpy()],
                                     open(args.exp_dir + 'predictions/train_online_best' + args.exp_name + '.p', "wb"))
-                        # print (tactile, tactile_pred)
 
-                    # print ("val_loss:", np.mean(val_loss))
                     if np.mean(val_loss_t) < best_val_loss:
                         print("new best val loss:", np.mean(val_loss_t))
                         best_val_loss = np.mean(val_loss_t)
@@ -227,11 +215,5 @@ if __name__ == '__main__':
 
                 avg_train_loss = np.mean(train_loss)
                 avg_val_loss = np.mean(val_loss)
-
-                # avg_train_loss = np.array([avg_train_loss])
-                # avg_val_loss = np.array([avg_val_loss])
-                #
-                # train_loss_list = np.append(train_loss_list, avg_train_loss, axis=0)
-                # val_loss_list = np.append(val_loss_list, avg_val_loss, axis=0)
 
             print("Train Loss: %.6f, Valid Loss: %.6f" % (avg_train_loss, avg_val_loss))

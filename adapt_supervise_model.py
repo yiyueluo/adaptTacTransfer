@@ -1,9 +1,13 @@
+'''
+This code defines the forward model (with adaptation module),
+which will be used in online_supervise_train.py with oneline_supervise_dataloader.py.
+'''
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 class haptac_online(nn.Module):
-    """Dense neural network class."""
     def __init__(self, num_input_z, num_input, num_z, num_output):
         super(haptac_online, self).__init__()
         self.linear0_z = nn.Linear(num_input_z * 2,1280) #6x3=18
@@ -18,7 +22,6 @@ class haptac_online(nn.Module):
 
     def forward(self, act_z, tactile_z, act): #act_z, tactile_z, tactile_goal_z, act
         """Forward pass."""
-
         x = torch.cat((act_z, tactile_z), axis=2)
         x = x.reshape(x.shape[0], -1)
         x = F.relu(self.linear0_z(x))

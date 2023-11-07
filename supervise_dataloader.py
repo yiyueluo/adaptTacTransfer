@@ -1,3 +1,9 @@
+'''
+This code defines the dataloder for the forward model (without adaptation module),
+which will be used in supervise_train.py, along with supervise_model.py.
+'''
+
+
 import os
 import h5py
 import numpy as np
@@ -32,10 +38,5 @@ class sample_data(Dataset):
     def __getitem__(self, idx):
         act = window_select(self.data[3],idx,self.window) #0 3
         tactile = window_select(self.data[4],idx,self.window) #1 4
-
-        # act = np.reshape(act, (act.shape[0], act.shape[1], 1))
-        # tactile = np.reshape(tactile, (tactile.shape[0], tactile.shape[1], 1))
-        # act = np.reshape(act, (1, act.shape[0], act.shape[1]))
-        # tactile = np.reshape(tactile, (1, tactile.shape[0], tactile.shape[1]))
 
         return act, tactile

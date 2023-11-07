@@ -1,3 +1,8 @@
+'''
+This code runs the invers optimization for haptic output (with or without adaptation module),
+which outputs haptic signal based on defined target tactile signal and trained forward model.
+'''
+
 import torch.nn as nn
 import time
 from torch.autograd import Variable
@@ -17,15 +22,15 @@ from supervise_model import haptac
 from OnlineSenHaptExtract import *
 
 parser = argparse.ArgumentParser(description='Process some integers.')
-parser.add_argument('--adapt', type=bool, default=True, help='adapative')
-parser.add_argument('--exp_dir', type=str, default='../recordings/exp5/', help='Experiment path')
-parser.add_argument('--exp_name', type=str, default='_03', help='Experiment name')
+parser.add_argument('--adapt', type=bool, default=True, help='Set true if would like to have the adaptation module')
+parser.add_argument('--exp_dir', type=str, default='./exp/', help='Experiment path')
+parser.add_argument('--exp_name', type=str, default='', help='Experiment name')
 parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch size,128')
-parser.add_argument('--weightdecay', type=float, default=1e-3, help='weight decay')
-parser.add_argument('--window', type=int, default=200, help='window around the time step')
-parser.add_argument('--n_iter', type=int, default=5000, help='The time steps you want to subsample the dataset to,500')
-parser.add_argument('--ckpt', type=str, default='val_best', help='loaded ckpt file')
+parser.add_argument('--weightdecay', type=float, default=1e-3, help='Weight decay')
+parser.add_argument('--window', type=int, default=200, help='Window around the time step')
+parser.add_argument('--n_iter', type=int, default=5000, help='Set number of iteractions')
+parser.add_argument('--ckpt', type=str, default='val_best_adapt_sample', help='Loaded forward model ckpt file')
 args = parser.parse_args()
 
 
@@ -79,9 +84,7 @@ def sample_hapt_multifinger(tac_goal, space):
     output.append(hapt_goal)
     intermediate = [-1]
     for i in range(1, space):
-        s = []
         s =  hapt_goal[:-i] + [intermediate for iter in range(i)]
-        # print (len(s))
         output.append(s)
 
     return output
@@ -120,7 +123,7 @@ def smooth_torch(act):
     return output
 
 
-'''training code'''
+'''optimization code'''
 if __name__ == '__main__':
 
     act_optimized_output = np.zeros((5, 50)) #optimized haptic sequence
@@ -175,13 +178,7 @@ if __name__ == '__main__':
 
         act_ori = data[3][:, i:i+200]
         tac_goal = data[4][:, i:i+200]
-        # tac_goal = tac_goal[:, space:]
-        # sample_act = sample_hapt(tac_goal, space)
-        # print (len(sample_act), len(sample_act[0]))
-        # act = hapt_transform(sample_act)
-        # print (act.shape)
         sample_act = sample_hapt_multifinger(tac_goal, space)
-        # print (len(sample_act), len(sample_act[0]))
         act = hapt_transform_multifinger(sample_act)
         act_unoptimized = act[0, :, :]
 
@@ -189,7 +186,6 @@ if __name__ == '__main__':
 
         # for i in range(tac_goal.shape[0]):
         #     plt.plot(tac_goal[i, :])
-        # #
         # plt.plot(sample_act[0])
         # plt.show()
 
@@ -203,8 +199,7 @@ if __name__ == '__main__':
         act_z = torch.tensor(np.tile(act_z, (32, 1, 1)), dtype=torch.float, device=device)
         tactile_z = torch.tensor(np.tile(tactile_z, (32, 1, 1)), dtype=torch.float, device=device)
         tactile_goal_z = torch.tensor(np.tile(tactile_goal_z, (32, 1, 1)), dtype=torch.float, device=device)
-        #
-        # print (act.size(), tactile.size())
+
 
         optimizer = optim.Adam([act], lr=1e-3, betas=(0.9, 0.999))
 
@@ -216,13 +211,7 @@ if __name__ == '__main__':
                 else:
                     tactile_pred = model(act)
                     loss = criterion(tactile_pred, tactile) * 100 + torch.std(tactile_pred)
-                # print (loss)
 
-                # act_process = optimize_hapt_postprocess(act.cpu().data.numpy())
-                # pickle.dump([act.cpu().data.numpy(), tactile.cpu().data.numpy(), tactile_pred.cpu().data.numpy(), act_ori.cpu().data.numpy()],
-                #             open(args.exp_dir + 'optimize/' + str(idx_iter) + '.p', "wb"))
-
-                # print(loss.grad)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -245,7 +234,7 @@ if __name__ == '__main__':
 
 
         pickle.dump([act_optimized_output, tactile_output, tactile_pred_output, act_ori_output, act_unoptimized_output],
-                    open(args.exp_dir + 'optimize/best' + args.exp_name + '.p', "wb"))
+                    open(args.exp_dir + 'optimize/optimized' + args.exp_name + '.p', "wb"))
 
 
 
